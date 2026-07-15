@@ -1,5 +1,10 @@
 #include "application.h"
+#include "discovery.h"
 #include "sdk-loader.h"
+
+#ifndef TVT_GUI_VARIANT
+#define TVT_GUI_VARIANT "unknown"
+#endif
 
 int
 main(int argc, char **argv)
@@ -7,6 +12,7 @@ main(int argc, char **argv)
   TvtAppOptions options = { .timeout_ms = 1500 };
   gboolean show_version = FALSE;
   gboolean check_sdk = FALSE;
+  gboolean discover_only = FALSE;
   GOptionEntry entries[] = {
     { "sdk-path", 0, 0, G_OPTION_ARG_FILENAME, &options.sdk_path,
       "Path to a vendor-supplied libdvrnetsdk.so or its directory", "PATH" },
@@ -16,6 +22,8 @@ main(int argc, char **argv)
       "Discovery response timeout per attempt", "MILLISECONDS" },
     { "check-sdk", 0, 0, G_OPTION_ARG_NONE, &check_sdk,
       "Check the private SDK path and exit without opening the GUI", NULL },
+    { "discover-only", 0, 0, G_OPTION_ARG_NONE, &discover_only,
+      "Run LAN discovery, print a tab-separated inventory, and exit", NULL },
     { "version", 'v', 0, G_OPTION_ARG_NONE, &show_version, "Print version and exit", NULL },
     { NULL }
   };
@@ -29,7 +37,7 @@ main(int argc, char **argv)
     return 2;
   }
   if (show_version) {
-    g_print("tvt-iptool 0.1.0\n");
+    g_print("tvt-iptool 0.1.0 (%s)\n", TVT_GUI_VARIANT);
     return 0;
   }
   if (check_sdk) {
@@ -41,6 +49,40 @@ main(int argc, char **argv)
       return 1;
     }
     g_print("SDK available: %s\n", detail);
+    g_free(options.sdk_path);
+    g_free(options.bind_address);
+    return 0;
+  }
+  if (discover_only) {
+    TvtDiscoveryOptions discovery_options = {
+      .timeout_ms = options.timeout_ms,
+      .retries = 2,
+      .bind_address = options.bind_address,
+    };
+    g_autoptr(GError) discover_error = NULL;
+    GPtrArray *devices = tvt_discover_lan(&discovery_options, NULL, &discover_error);
+    if (!devices) {
+      g_printerr("Discovery failed: %s\n", discover_error->message);
+      g_free(options.sdk_path);
+      g_free(options.bind_address);
+      return 1;
+    }
+    g_print("TYPE\tIP\tMAC\tMODEL\tNAME\tFIRMWARE\tDATA\tHTTP\n");
+    for (guint i = 0; i < devices->len; i++) {
+      TvtDevice *device = g_ptr_array_index(devices, i);
+      g_print("%s\t%s\t%s\t%s\t%s\t%s\t%u\t%u\n",
+              tvt_device_get_device_type(device),
+              tvt_device_get_ip(device),
+              tvt_device_get_mac(device),
+              tvt_device_get_model(device),
+              tvt_device_get_name(device),
+              tvt_device_get_firmware(device),
+              tvt_device_get_data_port(device),
+              tvt_device_get_http_port(device));
+    }
+    guint found = devices->len;
+    g_ptr_array_unref(devices);
+    g_printerr("%u device%s discovered\n", found, found == 1 ? "" : "s");
     g_free(options.sdk_path);
     g_free(options.bind_address);
     return 0;

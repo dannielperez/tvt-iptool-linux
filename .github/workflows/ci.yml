@@ -10,12 +10,16 @@ permissions:
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        gui: [gtk3, gtk4]
     steps:
       - uses: actions/checkout@v7
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends meson ninja-build libgtk-4-dev desktop-file-utils appstream
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends meson ninja-build libgtk-3-dev libgtk-4-dev desktop-file-utils appstream
       - name: Configure
-        run: meson setup build
+        run: meson setup build -Dgui=${{ matrix.gui }}
       - name: Build
         run: meson compile -C build
       - name: Test

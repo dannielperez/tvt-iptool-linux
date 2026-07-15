@@ -198,7 +198,9 @@ tvt_discover_lan(const TvtDiscoveryOptions *options, GCancellable *cancellable, 
   int enabled = 1;
   setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 
-  struct sockaddr_in local = { .sin_family = AF_INET, .sin_port = htons(0) };
+  struct sockaddr_in local = { 0 };
+  local.sin_family = AF_INET;
+  local.sin_port = htons(0);
   local.sin_addr.s_addr = htonl(INADDR_ANY);
   if (options && options->bind_address && *options->bind_address) {
     if (inet_pton(AF_INET, options->bind_address, &local.sin_addr) != 1) {
@@ -218,7 +220,9 @@ tvt_discover_lan(const TvtDiscoveryOptions *options, GCancellable *cancellable, 
 
   unsigned char ttl = 4;
   setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
-  struct sockaddr_in destination = { .sin_family = AF_INET, .sin_port = htons(SSDP_PORT) };
+  struct sockaddr_in destination = { 0 };
+  destination.sin_family = AF_INET;
+  destination.sin_port = htons(SSDP_PORT);
   inet_pton(AF_INET, SSDP_ADDRESS, &destination.sin_addr);
 
   GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_object_unref);

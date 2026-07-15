@@ -20,7 +20,7 @@ struct _TvtDevice {
   gboolean dhcp;
 };
 
-G_DEFINE_FINAL_TYPE(TvtDevice, tvt_device, G_TYPE_OBJECT)
+G_DEFINE_TYPE(TvtDevice, tvt_device, G_TYPE_OBJECT)
 
 enum {
   PROP_0,

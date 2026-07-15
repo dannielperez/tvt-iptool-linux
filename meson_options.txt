@@ -1,0 +1,7 @@
+option(
+  'gui',
+  type: 'combo',
+  choices: ['gtk3', 'gtk4'],
+  value: 'gtk3',
+  description: 'GUI frontend to build (gtk3 for compatibility, gtk4 for modern desktops)',
+)

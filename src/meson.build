@@ -20,12 +20,18 @@ tvt_core_dep = declare_dependency(
   include_directories: include_directories('.'),
 )
 
+application_source = gui_variant == 'gtk3' ? 'application-gtk3.c' : 'application-gtk4.c'
+application_c_args = ['-DTVT_GUI_VARIANT="@0@"'.format(gui_variant)]
+if gui_variant == 'gtk4'
+  # GTK 4.14 contains a harmless extra semicolon in a public header that
+  # -Wpedantic diagnoses. Keep strict warnings enabled for the shared core.
+  application_c_args += ['-Wno-pedantic']
+endif
+
 executable(
   'tvt-iptool',
-  files('main.c', 'application.c'),
+  files('main.c', application_source),
   dependencies: [gtk_dep, tvt_core_dep],
-  # GTK 4.14 itself contains a harmless extra semicolon that -Wpedantic
-  # diagnoses through a public header. Keep strict warnings for our core.
-  c_args: ['-Wno-pedantic'],
+  c_args: application_c_args,
   install: true,
 )

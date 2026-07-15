@@ -20,36 +20,60 @@ TVT and related product names are trademarks of their respective owners. This pr
 - Duplicate-IP detection against the current discovery set
 - Runtime-loaded optional SDK; the SDK is never linked into or packaged with the app
 - Post-change verification: the same MAC must reappear at the requested IP
-- GTK 4 desktop integration
+- Two C frontends over the same core: GTK 3 for Ubuntu 18.04-era systems and GTK 4 for current desktops
 
 ## Build
 
-Install a C toolchain, Meson, Ninja, and GTK 4 development files.
+Install a C toolchain, Meson, Ninja, and the development files for the frontend you want.
+
+Published binaries use explicit variant names:
+
+| Release asset suffix | Built on | Intended runtime |
+|---|---|---|
+| `linux-x86_64-gtk3` | Ubuntu 18.04 / glibc 2.27 | Legacy and field workstations |
+| `linux-x86_64-gtk4` | Ubuntu 24.04 | Current Linux desktops |
+
+Both variants expose the same commands and device-management behavior.
+
+### GTK 3 compatibility build
+
+Use this variant for Ubuntu 18.04-era workstations:
 
 Ubuntu 24.04 / Debian testing:
 
 ```sh
-sudo apt install build-essential meson ninja-build libgtk-4-dev
-meson setup build
-meson compile -C build
-meson test -C build --print-errorlogs
-./build/src/tvt-iptool
+sudo apt install build-essential meson ninja-build libgtk-3-dev
+meson setup build-gtk3 -Dgui=gtk3
+meson compile -C build-gtk3
+meson test -C build-gtk3 --print-errorlogs
+./build-gtk3/src/tvt-iptool
 ```
 
-Fedora:
+Fedora GTK 3 dependencies:
 
 ```sh
-sudo dnf install gcc meson ninja-build gtk4-devel
-meson setup build
-meson compile -C build
-meson test -C build --print-errorlogs
-./build/src/tvt-iptool
+sudo dnf install gcc meson ninja-build gtk3-devel
+meson setup build-gtk3 -Dgui=gtk3
+meson compile -C build-gtk3
+meson test -C build-gtk3 --print-errorlogs
+./build-gtk3/src/tvt-iptool
+```
+
+### GTK 4 modern build
+
+```sh
+# Ubuntu 24.04 / current Debian
+sudo apt install build-essential meson ninja-build libgtk-4-dev
+meson setup build-gtk4 -Dgui=gtk4
+meson compile -C build-gtk4
+meson test -C build-gtk4 --print-errorlogs
+./build-gtk4/src/tvt-iptool
 ```
 
 Install system-wide with:
 
 ```sh
-sudo meson install -C build
+sudo meson install -C build-gtk3
 ```
 
 ## Discovery
@@ -121,7 +145,7 @@ If verification fails, treat the operation as indeterminate. Do not update NVR c
 ## Architecture
 
 ```text
-GTK 4 application
+GTK 3 or GTK 4 application
   ├── GListStore device inventory + filters
   ├── POSIX UDP multicast discovery
   │     └── GLib GMarkup response parser
@@ -140,15 +164,20 @@ Network and SDK work runs outside the GTK main thread. Secrets are held only for
 --bind-address IP     Local IPv4 address for multicast discovery
 --timeout-ms N        Per-attempt discovery timeout (250–30000)
 --check-sdk           Validate SDK loading and exit
+--discover-only       Print a tab-separated LAN inventory and exit
 --version             Print the application version
 ```
 
 ## Development
 
 ```sh
-meson setup build -Dwerror=true
-meson compile -C build
-meson test -C build --print-errorlogs
+meson setup build-gtk3 -Dgui=gtk3 -Dwerror=true
+meson compile -C build-gtk3
+meson test -C build-gtk3 --print-errorlogs
+
+meson setup build-gtk4 -Dgui=gtk4 -Dwerror=true
+meson compile -C build-gtk4
+meson test -C build-gtk4 --print-errorlogs
 ```
 
 The `no-vendor-sdk-artifacts` test rejects known vendor SDK filenames, shared libraries, and unexpectedly large files. Review every release archive before publishing.
