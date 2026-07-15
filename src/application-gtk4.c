@@ -2,8 +2,8 @@
 
 #include "device.h"
 #include "discovery.h"
+#include "l2-provision.h"
 #include "network.h"
-#include "sdk-loader.h"
 #include "web-uri.h"
 
 #include <string.h>
@@ -30,9 +30,7 @@ typedef struct {
   GtkWidget *mask_entry;
   GtkWidget *gateway_entry;
   GtkWidget *password_entry;
-  GtkWidget *sdk_entry;
   GtkWidget *apply_button;
-  char *sdk_path;
   char *bind_address;
   guint timeout_ms;
   guint auto_source;
@@ -46,14 +44,13 @@ typedef struct {
   char *subnet_mask;
   char *gateway;
   char *password;
-  char *sdk_path;
   char *bind_address;
   guint timeout_ms;
 } ModifyJob;
 
 typedef struct {
   gboolean verified;
-  char *function_used;
+  char *observed_ip;
 } ModifyWorkResult;
 
 typedef struct {
@@ -88,7 +85,6 @@ modify_job_free(ModifyJob *job)
   g_free(job->new_ip);
   g_free(job->subnet_mask);
   g_free(job->gateway);
-  g_free(job->sdk_path);
   g_free(job->bind_address);
   g_free(job);
 }
@@ -98,7 +94,7 @@ modify_work_result_free(ModifyWorkResult *result)
 {
   if (!result)
     return;
-  g_free(result->function_used);
+  g_free(result->observed_ip);
   g_free(result);
 }
 
@@ -109,7 +105,6 @@ app_free(App *app)
     return;
   if (app->auto_source)
     g_source_remove(app->auto_source);
-  g_free(app->sdk_path);
   g_free(app->bind_address);
   g_free(app);
 }
@@ -298,21 +293,16 @@ modify_worker(GTask *task, gpointer source_object, gpointer task_data, GCancella
   ModifyJob *job = task_data;
   (void)source_object;
   g_autoptr(GError) error = NULL;
-  TvtSdkModifyResult *sdk_result = tvt_sdk_modify_ip(job->sdk_path, job->mac, job->password,
-                                                     job->new_ip, job->subnet_mask, job->gateway,
-                                                     &error);
-  if (!sdk_result) {
+  if (!tvt_l2_send_set_ip(job->bind_address, job->mac, job->password, job->new_ip,
+                          job->subnet_mask, job->gateway, FALSE, &error)) {
     g_task_return_error(task, g_steal_pointer(&error));
     return;
   }
 
   ModifyWorkResult *result = g_new0(ModifyWorkResult, 1);
-  result->function_used = g_strdup(sdk_result->function_used);
-  tvt_sdk_modify_result_free(sdk_result);
-
-  for (guint attempt = 0; attempt < 5 && (!cancellable || !g_cancellable_is_cancelled(cancellable)); attempt++) {
+  for (guint attempt = 0; attempt < 12 && (!cancellable || !g_cancellable_is_cancelled(cancellable)); attempt++) {
     TvtDiscoveryOptions options = {
-      .timeout_ms = MAX(750, job->timeout_ms),
+      .timeout_ms = MAX(1000, job->timeout_ms),
       .retries = 1,
       .bind_address = job->bind_address,
     };
@@ -321,17 +311,20 @@ modify_worker(GTask *task, gpointer source_object, gpointer task_data, GCancella
     if (devices) {
       for (guint i = 0; i < devices->len; i++) {
         TvtDevice *device = g_ptr_array_index(devices, i);
-        if (g_ascii_strcasecmp(tvt_device_get_mac(device), job->mac) == 0 &&
-            g_str_equal(tvt_device_get_ip(device), job->new_ip)) {
-          result->verified = TRUE;
-          break;
+        if (g_ascii_strcasecmp(tvt_device_get_mac(device), job->mac) == 0) {
+          g_free(result->observed_ip);
+          result->observed_ip = g_strdup(tvt_device_get_ip(device));
+          if (g_str_equal(result->observed_ip, job->new_ip)) {
+            result->verified = TRUE;
+            break;
+          }
         }
       }
       g_ptr_array_unref(devices);
     }
     if (result->verified)
       break;
-    g_usleep(400000);
+    g_usleep(500000);
   }
   g_task_return_pointer(task, result, (GDestroyNotify)modify_work_result_free);
 }
@@ -350,17 +343,23 @@ modify_done(GObject *source_object, GAsyncResult *async_result, gpointer user_da
     return;
   }
   if (!result->verified) {
-    gtk_label_set_text(GTK_LABEL(app->status_label), "Change sent; verification blocked");
-    g_autofree char *message = g_strdup_printf(
-      "%s accepted the network change, but the same MAC did not reappear at the requested IP. "
-      "Do not change NVR channel mappings until the device is independently confirmed.",
-      result->function_used);
-    show_notice(app, "Verification required", message, TRUE);
+    if (result->observed_ip) {
+      gtk_label_set_text(GTK_LABEL(app->status_label), "Network change not applied");
+      g_autofree char *message = g_strdup_printf(
+        "The device is still advertising %s. The Layer-2 request was sent, but the camera/NVR "
+        "did not apply the requested address. Check the administrator password and retry.",
+        result->observed_ip);
+      show_notice(app, "Network change not applied", message, TRUE);
+    } else {
+      gtk_label_set_text(GTK_LABEL(app->status_label), "Change sent; device not rediscovered");
+      show_notice(app, "Verification required",
+                  "The Layer-2 request was sent, but the device did not reappear during verification. "
+                  "Refresh and locate the same MAC before changing NVR channel mappings.", TRUE);
+    }
   } else {
     gtk_label_set_text(GTK_LABEL(app->status_label), "Network change verified");
-    g_autofree char *message = g_strdup_printf("The device reappeared at its new IP after %s completed.",
-                                               result->function_used);
-    show_notice(app, "Network change verified", message, FALSE);
+    show_notice(app, "Network change verified",
+                "The same device MAC reappeared at the requested IP address.", FALSE);
   }
   modify_work_result_free(result);
   start_discovery(app);
@@ -469,7 +468,6 @@ apply_clicked(GtkButton *button, gpointer user_data)
                 TRUE);
     return;
   }
-  const char *sdk_text = gtk_editable_get_text(GTK_EDITABLE(app->sdk_entry));
   ModifyJob *job = g_new0(ModifyJob, 1);
   job->mac = g_strdup(tvt_device_get_mac(device));
   job->old_ip = g_strdup(tvt_device_get_ip(device));
@@ -478,7 +476,6 @@ apply_clicked(GtkButton *button, gpointer user_data)
   job->gateway = g_strdup(gateway);
   job->password = g_strdup(gtk_editable_get_text(GTK_EDITABLE(app->password_entry)));
   set_entry(app->password_entry, "");
-  job->sdk_path = *sdk_text ? g_strdup(sdk_text) : NULL;
   job->bind_address = g_strdup(app->bind_address);
   job->timeout_ms = app->timeout_ms;
   show_confirmation(app, job, warning);
@@ -636,13 +633,8 @@ build_editor(App *app)
   app->password_entry = gtk_password_entry_new();
   gtk_password_entry_set_show_peek_icon(GTK_PASSWORD_ENTRY(app->password_entry), TRUE);
   editor_row(GTK_GRID(grid), 3, "Admin password", app->password_entry);
-  app->sdk_entry = gtk_entry_new();
-  gtk_entry_set_placeholder_text(GTK_ENTRY(app->sdk_entry), "TVT_SDK_PATH or library path");
-  set_entry(app->sdk_entry, app->sdk_path);
-  editor_row(GTK_GRID(grid), 4, "SDK path", app->sdk_entry);
-
   GtkWidget *hint = label_with_style(
-    "Discovery works without the vendor SDK.\nApplying a change loads your local SDK and verifies the same MAC.",
+    "Uses TVT Layer-2 provisioning, then verifies the same MAC at the requested IP.",
     "dim-label");
   gtk_box_append(GTK_BOX(box), hint);
   app->apply_button = gtk_button_new_with_label("Apply and verify");
@@ -770,7 +762,6 @@ int
 tvt_application_run(const TvtAppOptions *options, int argc, char **argv)
 {
   App *app = g_new0(App, 1);
-  app->sdk_path = g_strdup(options->sdk_path);
   app->bind_address = g_strdup(options->bind_address);
   app->timeout_ms = options->timeout_ms;
 #if GLIB_CHECK_VERSION(2, 74, 0)

@@ -37,7 +37,7 @@ main(int argc, char **argv)
     return 2;
   }
   if (show_version) {
-    g_print("tvt-iptool 0.1.2 (%s)\n", TVT_GUI_VARIANT);
+    g_print("tvt-iptool 0.1.3 (%s)\n", TVT_GUI_VARIANT);
     return 0;
   }
   if (check_sdk) {

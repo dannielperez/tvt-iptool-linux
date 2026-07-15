@@ -7,7 +7,7 @@ The project is intentionally buildable and useful without proprietary software:
 - LAN discovery implements the vendor Layer-2 multicast protocol and its SSDP/UPnP response format directly.
 - The GUI, parser, validation, tests, desktop files, and icons are open source.
 - No TVT SDK binary, header, credential, firmware, or copied application asset is included.
-- IP modification is enabled only when the operator supplies a compatible Linux `libdvrnetsdk.so` at runtime.
+- IP modification uses the same targeted TVT Layer-2 set-IP packet as the original IPTool and does not require the SDK.
 
 TVT and related product names are trademarks of their respective owners. This project is independent and is not an official vendor release.
 
@@ -19,7 +19,8 @@ TVT and related product names are trademarks of their respective owners. This pr
 - Double-click a device to open its HTTP or HTTPS management interface
 - Validated static IPv4, subnet-mask, and gateway editor
 - Duplicate-IP detection against the current discovery set
-- Runtime-loaded optional SDK; the SDK is never linked into or packaged with the app
+- Runtime-loaded optional SDK check; the SDK is never linked into or packaged with the app
+- Direct TVT Layer-2 network provisioning targeted by device MAC
 - Post-change verification: the same MAC must reappear at the requested IP
 - Two C frontends over the same core: GTK 3 for Ubuntu 18.04-era systems and GTK 4 for current desktops
 
@@ -100,7 +101,7 @@ These limits keep the initial public tool focused on the two observed, testable 
 
 ## Optional SDK setup
 
-Discovery does not need an SDK. Network modification does.
+Discovery and network modification do not need an SDK. The loader remains available for validating a private SDK installation intended for future authenticated device operations.
 
 Obtain the Linux device SDK through your vendor or authorized distributor. Keep it outside this repository. The default private runtime location is:
 
@@ -135,12 +136,12 @@ Validate the SDK loader and required symbols without opening the GUI:
 tvt-iptool --sdk-path /opt/tvt-sdk --check-sdk
 ```
 
-The loader accepts these provisioning surfaces:
+The loader recognizes these legacy provisioning surfaces for compatibility checks only:
 
 1. `NET_SDK_SetDeviceIP`, when present.
 2. `NET_SDK_ModifyDeviceNetInfo`, for older SDK builds.
 
-The repository does not download the SDK and the build system never searches the source tree for it.
+The GUI does not use those return values to claim that an IP change occurred. The repository does not download the SDK and the build system never searches the source tree for it.
 
 ## Safety model
 
@@ -150,8 +151,9 @@ Changing a camera IP can interrupt recording or make the device unreachable. The
 2. validates the new IP, mask, gateway, host bits, and special-address exclusions;
 3. checks for a duplicate IP in the current discovery set;
 4. displays an exact confirmation before mutation;
-5. invokes one SDK operation for one MAC;
-6. rescans and reports success only if the same MAC appears at the new IP.
+5. sends the TVT Layer-2 set-IP request targeted to one MAC;
+6. rescans for up to roughly 24 seconds and reports success only if the same MAC appears at the new IP;
+7. reports a likely rejected password when that MAC remains at its prior address.
 
 If verification fails, treat the operation as indeterminate. Do not update NVR channel mappings or router settings until the device is independently located.
 
@@ -163,7 +165,8 @@ GTK 3 or GTK 4 application
   ├── POSIX UDP multicast discovery
   │     └── GLib GMarkup response parser
   ├── IPv4 validation and conflict checks
-  └── optional runtime SDK loader (dlopen)
+  ├── TVT Layer-2 set-IP packet builder and sender
+  └── optional runtime SDK loader (dlopen; diagnostics only)
         ├── NET_SDK_SetDeviceIP
         └── NET_SDK_ModifyDeviceNetInfo
 ```

@@ -1,6 +1,7 @@
 core_sources = files(
   'device.c',
   'discovery.c',
+  'l2-provision.c',
   'network.c',
   'sdk-loader.c',
   'web-uri.c',
