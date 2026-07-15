@@ -1,7 +1,7 @@
 project(
   'tvt-iptool-linux',
   'c',
-  version: '0.1.3',
+  version: '0.1.4',
   license: 'MIT',
   meson_version: '>=0.56.0',
   default_options: [

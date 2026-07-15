@@ -18,6 +18,7 @@ TVT and related product names are trademarks of their respective owners. This pr
 - IP, MAC, model, name, firmware, data-port, and HTTP-port inventory
 - Double-click a device to open its HTTP or HTTPS management interface
 - Validated static IPv4, subnet-mask, and gateway editor
+- DHCP enable/disable control with Layer-2 state verification
 - Duplicate-IP detection against the current discovery set
 - Runtime-loaded optional SDK check; the SDK is never linked into or packaged with the app
 - Direct TVT Layer-2 network provisioning targeted by device MAC

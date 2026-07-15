@@ -16,12 +16,14 @@ typedef enum {
 
 GQuark tvt_l2_provision_error_quark(void);
 
-GBytes *tvt_l2_build_set_ip_request(const char *mac, const char *password,
+GBytes *tvt_l2_build_set_ip_request(guint32 protocol_version,
+                                    const char *mac, const char *password,
                                     const char *new_ip, const char *subnet_mask,
                                     const char *gateway, gboolean dhcp,
                                     GError **error);
 
-gboolean tvt_l2_send_set_ip(const char *bind_address, const char *mac,
+gboolean tvt_l2_send_set_ip(const char *bind_address, guint32 protocol_version,
+                            const char *mac,
                             const char *password, const char *new_ip,
                             const char *subnet_mask, const char *gateway,
                             gboolean dhcp, GError **error);

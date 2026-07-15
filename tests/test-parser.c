@@ -58,7 +58,7 @@ parses_layer2_response(void)
 {
   guint8 packet[140] = {0};
   memcpy(packet, "MHED", 4);
-  packet[4] = 0x08;
+  packet[4] = 0x0b;
   packet[6] = 0x01;
   packet[8] = 0x02;
   memcpy(packet + 0x0c, "Loading Dock", 12);
@@ -79,6 +79,7 @@ parses_layer2_response(void)
   packet[0x33] = 1;
   packet[0x3c] = 80;
   packet[0x40] = 4; /* IPC */
+  packet[0x8a] = 1; /* DHCP enabled */
 
   g_autoptr(GError) error = NULL;
   TvtDevice *device = tvt_device_parse_response((const char *)packet, sizeof(packet), NULL, &error);
@@ -92,6 +93,8 @@ parses_layer2_response(void)
   g_assert_cmpstr(tvt_device_get_gateway(device), ==, "192.168.50.1");
   g_assert_cmpuint(tvt_device_get_data_port(device), ==, 9008);
   g_assert_cmpuint(tvt_device_get_http_port(device), ==, 80);
+  g_assert_true(tvt_device_get_dhcp(device));
+  g_assert_cmpuint(tvt_device_get_protocol_version(device), ==, 0x0001000b);
   g_object_unref(device);
 }
 

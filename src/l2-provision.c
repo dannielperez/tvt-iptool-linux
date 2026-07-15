@@ -68,8 +68,18 @@ write_ipv4(guint8 packet[TVT_L2_PROVISION_PACKET_SIZE], gsize offset,
   return TRUE;
 }
 
+static void
+write_le32(guint8 *destination, guint32 value)
+{
+  destination[0] = (guint8)value;
+  destination[1] = (guint8)(value >> 8);
+  destination[2] = (guint8)(value >> 16);
+  destination[3] = (guint8)(value >> 24);
+}
+
 GBytes *
-tvt_l2_build_set_ip_request(const char *mac, const char *password,
+tvt_l2_build_set_ip_request(guint32 protocol_version,
+                            const char *mac, const char *password,
                             const char *new_ip, const char *subnet_mask,
                             const char *gateway, gboolean dhcp, GError **error)
 {
@@ -82,8 +92,9 @@ tvt_l2_build_set_ip_request(const char *mac, const char *password,
   }
 
   memcpy(packet, "MHED", 4);
-  packet[4] = 0x08;
-  packet[6] = 0x01;
+  if (protocol_version == 0)
+    protocol_version = 0x00010008;
+  write_le32(packet + 4, protocol_version);
   packet[8] = 0x03;
   memcpy(packet + 0x20, mac_bytes, sizeof(mac_bytes));
   if (!write_ipv4(packet, 0x28, new_ip, "IP address", error) ||
@@ -112,13 +123,14 @@ tvt_l2_build_set_ip_request(const char *mac, const char *password,
 }
 
 gboolean
-tvt_l2_send_set_ip(const char *bind_address, const char *mac,
+tvt_l2_send_set_ip(const char *bind_address, guint32 protocol_version,
+                   const char *mac,
                    const char *password, const char *new_ip,
                    const char *subnet_mask, const char *gateway,
                    gboolean dhcp, GError **error)
 {
   g_autoptr(GBytes) request = tvt_l2_build_set_ip_request(
-    mac, password, new_ip, subnet_mask, gateway, dhcp, error);
+    protocol_version, mac, password, new_ip, subnet_mask, gateway, dhcp, error);
   if (!request)
     return FALSE;
 

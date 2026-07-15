@@ -16,6 +16,11 @@
   </developer>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.4" date="2026-07-14">
+      <description>
+        <p>Add DHCP configuration and verification.</p>
+      </description>
+    </release>
     <release version="0.1.3" date="2026-07-14">
       <description>
         <p>Use the original TVT Layer-2 set-IP protocol and strengthen post-change verification.</p>

@@ -87,14 +87,14 @@ builds_vendor_compatible_set_ip_packet(void)
 {
   g_autoptr(GError) error = NULL;
   g_autoptr(GBytes) request = tvt_l2_build_set_ip_request(
-    "58:5B:69:52:28:71", "admin123", "10.160.35.251",
+    0x0001000b, "58:5B:69:52:28:71", "admin123", "10.160.35.251",
     "255.255.255.0", "10.160.35.1", FALSE, &error);
   g_assert_no_error(error);
   g_assert_nonnull(request);
   gsize size = 0;
   const guint8 *packet = g_bytes_get_data(request, &size);
   g_assert_cmpuint(size, ==, TVT_L2_PROVISION_PACKET_SIZE);
-  const guint8 expected_header[] = { 'M', 'H', 'E', 'D', 0x08, 0x00, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00 };
+  const guint8 expected_header[] = { 'M', 'H', 'E', 'D', 0x0b, 0x00, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00 };
   const guint8 expected_mac[] = { 0x58, 0x5b, 0x69, 0x52, 0x28, 0x71 };
   const guint8 expected_ip[] = { 10, 160, 35, 251 };
   const guint8 expected_mask[] = { 255, 255, 255, 0 };
@@ -114,14 +114,14 @@ validates_set_ip_packet_arguments(void)
 {
   g_autoptr(GError) mac_error = NULL;
   g_autoptr(GBytes) invalid_mac = tvt_l2_build_set_ip_request(
-    "not-a-mac", "password", "192.168.1.2", "255.255.255.0",
+    0x00010008, "not-a-mac", "password", "192.168.1.2", "255.255.255.0",
     "192.168.1.1", FALSE, &mac_error);
   g_assert_null(invalid_mac);
   g_assert_error(mac_error, TVT_L2_PROVISION_ERROR, TVT_L2_PROVISION_ERROR_ARGUMENT);
 
   g_autoptr(GError) password_error = NULL;
   g_autoptr(GBytes) long_password = tvt_l2_build_set_ip_request(
-    "58:5B:69:52:28:71", "1234567890123456789012", "192.168.1.2",
+    0x00010008, "58:5B:69:52:28:71", "1234567890123456789012", "192.168.1.2",
     "255.255.255.0", "192.168.1.1", FALSE, &password_error);
   g_assert_null(long_password);
   g_assert_error(password_error, TVT_L2_PROVISION_ERROR, TVT_L2_PROVISION_ERROR_ARGUMENT);

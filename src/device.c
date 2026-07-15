@@ -17,6 +17,7 @@ struct _TvtDevice {
   char *dns2;
   guint data_port;
   guint http_port;
+  guint protocol_version;
   gboolean dhcp;
 };
 
@@ -39,6 +40,7 @@ enum {
   PROP_DNS2,
   PROP_DATA_PORT,
   PROP_HTTP_PORT,
+  PROP_PROTOCOL_VERSION,
   PROP_DHCP,
   N_PROPERTIES,
 };
@@ -73,6 +75,7 @@ tvt_device_set_property(GObject *object, guint property_id, const GValue *value,
     case PROP_DNS2: set_string(&self->dns2, value); break;
     case PROP_DATA_PORT: self->data_port = g_value_get_uint(value); break;
     case PROP_HTTP_PORT: self->http_port = g_value_get_uint(value); break;
+    case PROP_PROTOCOL_VERSION: self->protocol_version = g_value_get_uint(value); break;
     case PROP_DHCP: self->dhcp = g_value_get_boolean(value); break;
     default: G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
   }
@@ -99,6 +102,7 @@ tvt_device_get_property(GObject *object, guint property_id, GValue *value, GPara
     case PROP_DNS2: g_value_set_string(value, self->dns2); break;
     case PROP_DATA_PORT: g_value_set_uint(value, self->data_port); break;
     case PROP_HTTP_PORT: g_value_set_uint(value, self->http_port); break;
+    case PROP_PROTOCOL_VERSION: g_value_set_uint(value, self->protocol_version); break;
     case PROP_DHCP: g_value_set_boolean(value, self->dhcp); break;
     default: G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
   }
@@ -155,6 +159,9 @@ tvt_device_class_init(TvtDeviceClass *klass)
                                                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
   properties[PROP_HTTP_PORT] = g_param_spec_uint("http-port", "http-port", "http-port", 0, 65535, 0,
                                                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+  properties[PROP_PROTOCOL_VERSION] = g_param_spec_uint(
+    "protocol-version", "protocol-version", "protocol-version", 0, G_MAXUINT,
+    0x00010008, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
   properties[PROP_DHCP] = g_param_spec_boolean("dhcp", "dhcp", "dhcp", FALSE,
                                               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
   g_object_class_install_properties(object_class, N_PROPERTIES, properties);
@@ -176,6 +183,7 @@ tvt_device_init(TvtDevice *self)
   self->gateway = g_strdup("");
   self->dns1 = g_strdup("");
   self->dns2 = g_strdup("");
+  self->protocol_version = 0x00010008;
 }
 
 TvtDevice *tvt_device_new(void) { return g_object_new(TVT_TYPE_DEVICE, NULL); }
@@ -199,6 +207,7 @@ STRING_GETTER(dns2, dns2)
 
 guint tvt_device_get_data_port(TvtDevice *self) { return self->data_port; }
 guint tvt_device_get_http_port(TvtDevice *self) { return self->http_port; }
+guint tvt_device_get_protocol_version(TvtDevice *self) { return self->protocol_version; }
 gboolean tvt_device_get_dhcp(TvtDevice *self) { return self->dhcp; }
 
 const char *

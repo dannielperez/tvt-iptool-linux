@@ -198,6 +198,8 @@ parse_l2_response(const guint8 *data, gsize length, GError **error)
                       "gateway", gateway,
                       "data-port", (guint)read_le16(data + 0x26),
                       "http-port", (guint)read_le16(data + 0x3c),
+                      "protocol-version", read_le32(data + 4),
+                      "dhcp", data[0x8a] != 0,
                       NULL);
 }
 

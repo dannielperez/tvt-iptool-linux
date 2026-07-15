@@ -24,6 +24,7 @@ const char *tvt_device_get_dns1(TvtDevice *self);
 const char *tvt_device_get_dns2(TvtDevice *self);
 guint tvt_device_get_data_port(TvtDevice *self);
 guint tvt_device_get_http_port(TvtDevice *self);
+guint tvt_device_get_protocol_version(TvtDevice *self);
 gboolean tvt_device_get_dhcp(TvtDevice *self);
 
 const char *tvt_device_get_column(TvtDevice *self, guint column);

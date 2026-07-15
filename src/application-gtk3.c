@@ -41,6 +41,7 @@ typedef struct {
   GtkWidget *ip_entry;
   GtkWidget *mask_entry;
   GtkWidget *gateway_entry;
+  GtkWidget *dhcp_check;
   GtkWidget *password_entry;
   GtkWidget *apply_button;
   char *bind_address;
@@ -56,12 +57,16 @@ typedef struct {
   char *subnet_mask;
   char *gateway;
   char *password;
+  guint32 protocol_version;
+  gboolean dhcp;
   char *bind_address;
   guint timeout_ms;
 } ModifyJob;
 
 typedef struct {
   gboolean verified;
+  gboolean dhcp;
+  gboolean observed_dhcp;
   char *observed_ip;
 } ModifyWorkResult;
 
@@ -231,6 +236,7 @@ selection_changed(GtkTreeSelection *selection, gpointer user_data)
     set_entry(app->ip_entry, "");
     set_entry(app->mask_entry, "");
     set_entry(app->gateway_entry, "");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->dhcp_check), FALSE);
     gtk_widget_set_sensitive(app->apply_button, FALSE);
     return;
   }
@@ -247,6 +253,7 @@ selection_changed(GtkTreeSelection *selection, gpointer user_data)
   set_entry(app->ip_entry, tvt_device_get_ip(device));
   set_entry(app->mask_entry, tvt_device_get_subnet_mask(device));
   set_entry(app->gateway_entry, tvt_device_get_gateway(device));
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(app->dhcp_check), tvt_device_get_dhcp(device));
   set_entry(app->password_entry, "");
   gtk_widget_set_sensitive(app->apply_button, *tvt_device_get_mac(device) != '\0');
   g_object_unref(device);
@@ -278,13 +285,15 @@ modify_worker(GTask *task, gpointer source_object, gpointer task_data, GCancella
   ModifyJob *job = task_data;
   (void)source_object;
   g_autoptr(GError) error = NULL;
-  if (!tvt_l2_send_set_ip(job->bind_address, job->mac, job->password, job->new_ip,
-                          job->subnet_mask, job->gateway, FALSE, &error)) {
+  if (!tvt_l2_send_set_ip(job->bind_address, job->protocol_version,
+                          job->mac, job->password, job->new_ip,
+                          job->subnet_mask, job->gateway, job->dhcp, &error)) {
     g_task_return_error(task, g_steal_pointer(&error));
     return;
   }
 
   ModifyWorkResult *result = g_new0(ModifyWorkResult, 1);
+  result->dhcp = job->dhcp;
   for (guint attempt = 0; attempt < 12 && (!cancellable || !g_cancellable_is_cancelled(cancellable)); attempt++) {
     TvtDiscoveryOptions options = {
       .timeout_ms = MAX(1000, job->timeout_ms),
@@ -299,7 +308,9 @@ modify_worker(GTask *task, gpointer source_object, gpointer task_data, GCancella
         if (g_ascii_strcasecmp(tvt_device_get_mac(device), job->mac) == 0) {
           g_free(result->observed_ip);
           result->observed_ip = g_strdup(tvt_device_get_ip(device));
-          if (g_str_equal(result->observed_ip, job->new_ip)) {
+          result->observed_dhcp = tvt_device_get_dhcp(device);
+          if ((job->dhcp && result->observed_dhcp) ||
+              (!job->dhcp && g_str_equal(result->observed_ip, job->new_ip))) {
             result->verified = TRUE;
             break;
           }
@@ -330,10 +341,13 @@ modify_done(GObject *source_object, GAsyncResult *async_result, gpointer user_da
   if (!result->verified) {
     if (result->observed_ip) {
       gtk_label_set_text(GTK_LABEL(app->status_label), "Network change not applied");
-      g_autofree char *message = g_strdup_printf(
-        "The device is still advertising %s. The Layer-2 request was sent, but the camera/NVR "
-        "did not apply the requested address. Check the administrator password and retry.",
-        result->observed_ip);
+      g_autofree char *message = result->dhcp
+        ? g_strdup_printf("The device reappeared at %s with DHCP still disabled. The Layer-2 request "
+                          "was sent, but the camera/NVR did not apply it. Check the administrator password and retry.",
+                          result->observed_ip)
+        : g_strdup_printf("The device is still advertising %s. The Layer-2 request was sent, but the camera/NVR "
+                          "did not apply the requested address. Check the administrator password and retry.",
+                          result->observed_ip);
       show_notice(app, "Network change not applied", message, TRUE);
     } else {
       gtk_label_set_text(GTK_LABEL(app->status_label), "Change sent; device not rediscovered");
@@ -343,8 +357,9 @@ modify_done(GObject *source_object, GAsyncResult *async_result, gpointer user_da
     }
   } else {
     gtk_label_set_text(GTK_LABEL(app->status_label), "Network change verified");
-    show_notice(app, "Network change verified",
-                "The same device MAC reappeared at the requested IP address.", FALSE);
+    show_notice(app, "Network change verified", result->dhcp
+                ? "The same device MAC reappeared with DHCP enabled."
+                : "The same device MAC reappeared at the requested IP address.", FALSE);
   }
   modify_work_result_free(result);
   start_discovery(app);
@@ -359,6 +374,16 @@ start_modify(App *app, ModifyJob *job)
   g_task_set_task_data(task, job, (GDestroyNotify)modify_job_free);
   g_task_run_in_thread(task, modify_worker);
   g_object_unref(task);
+}
+
+static void
+dhcp_toggled(GtkToggleButton *button, gpointer user_data)
+{
+  App *app = user_data;
+  gboolean editable = !gtk_toggle_button_get_active(button);
+  gtk_widget_set_sensitive(app->ip_entry, editable);
+  gtk_widget_set_sensitive(app->mask_entry, editable);
+  gtk_widget_set_sensitive(app->gateway_entry, editable);
 }
 
 static void
@@ -395,14 +420,17 @@ apply_clicked(GtkButton *button, gpointer user_data)
   job->subnet_mask = g_strdup(mask);
   job->gateway = g_strdup(gateway);
   job->password = g_strdup(gtk_entry_get_text(GTK_ENTRY(app->password_entry)));
+  job->protocol_version = tvt_device_get_protocol_version(device);
+  job->dhcp = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->dhcp_check));
   set_entry(app->password_entry, "");
   job->bind_address = g_strdup(app->bind_address);
   job->timeout_ms = app->timeout_ms;
   g_object_unref(device);
 
   g_autofree char *summary = g_strdup_printf(
-    "Device: %s\nCurrent IP: %s\nNew IP: %s\nSubnet mask: %s\nGateway: %s%s%s",
-    job->mac, job->old_ip, job->new_ip, job->subnet_mask, job->gateway,
+    "Device: %s\nCurrent IP: %s\nMode: %s\n%s IP: %s\nSubnet mask: %s\nGateway: %s%s%s",
+    job->mac, job->old_ip, job->dhcp ? "DHCP" : "Static",
+    job->dhcp ? "Fallback" : "New", job->new_ip, job->subnet_mask, job->gateway,
     warning ? "\n\nWarning: " : "", warning ? warning : "");
   GtkWidget *dialog = gtk_message_dialog_new(
     app->window,
@@ -603,10 +631,15 @@ build_editor(App *app)
   app->ip_entry = editor_row(GTK_GRID(grid), 0, "IP address", gtk_entry_new());
   app->mask_entry = editor_row(GTK_GRID(grid), 1, "Subnet mask", gtk_entry_new());
   app->gateway_entry = editor_row(GTK_GRID(grid), 2, "Gateway", gtk_entry_new());
+  GtkWidget *addressing_label = label_with_style("Addressing", NULL);
+  app->dhcp_check = gtk_check_button_new_with_label("Enable DHCP");
+  gtk_grid_attach(GTK_GRID(grid), addressing_label, 0, 3, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), app->dhcp_check, 1, 3, 1, 1);
+  g_signal_connect(app->dhcp_check, "toggled", G_CALLBACK(dhcp_toggled), app);
   app->password_entry = gtk_entry_new();
   gtk_entry_set_visibility(GTK_ENTRY(app->password_entry), FALSE);
   gtk_entry_set_input_purpose(GTK_ENTRY(app->password_entry), GTK_INPUT_PURPOSE_PASSWORD);
-  editor_row(GTK_GRID(grid), 3, "Admin password", app->password_entry);
+  editor_row(GTK_GRID(grid), 4, "Admin password", app->password_entry);
   GtkWidget *hint = label_with_style(
     "Uses TVT Layer-2 provisioning, then verifies the same MAC at the requested IP.",
     "dim-label");
