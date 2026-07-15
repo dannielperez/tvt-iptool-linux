@@ -54,6 +54,48 @@ rejects_unrelated_payload(void)
 }
 
 static void
+parses_layer2_response(void)
+{
+  guint8 packet[140] = {0};
+  memcpy(packet, "MHED", 4);
+  packet[4] = 0x08;
+  packet[6] = 0x01;
+  packet[8] = 0x02;
+  memcpy(packet + 0x0c, "Loading Dock", 12);
+  const guint8 mac[] = {0x58, 0x5b, 0x69, 0x11, 0x22, 0x33};
+  memcpy(packet + 0x20, mac, sizeof(mac));
+  packet[0x26] = 0x30;
+  packet[0x27] = 0x23; /* 9008 */
+  packet[0x28] = 192;
+  packet[0x29] = 168;
+  packet[0x2a] = 50;
+  packet[0x2b] = 20;
+  packet[0x2c] = 255;
+  packet[0x2d] = 255;
+  packet[0x2e] = 255;
+  packet[0x30] = 192;
+  packet[0x31] = 168;
+  packet[0x32] = 50;
+  packet[0x33] = 1;
+  packet[0x3c] = 80;
+  packet[0x40] = 4; /* IPC */
+
+  g_autoptr(GError) error = NULL;
+  TvtDevice *device = tvt_device_parse_response((const char *)packet, sizeof(packet), NULL, &error);
+  g_assert_no_error(error);
+  g_assert_nonnull(device);
+  g_assert_cmpstr(tvt_device_get_ip(device), ==, "192.168.50.20");
+  g_assert_cmpstr(tvt_device_get_mac(device), ==, "58:5B:69:11:22:33");
+  g_assert_cmpstr(tvt_device_get_device_type(device), ==, "IPC");
+  g_assert_cmpstr(tvt_device_get_name(device), ==, "Loading Dock");
+  g_assert_cmpstr(tvt_device_get_subnet_mask(device), ==, "255.255.255.0");
+  g_assert_cmpstr(tvt_device_get_gateway(device), ==, "192.168.50.1");
+  g_assert_cmpuint(tvt_device_get_data_port(device), ==, 9008);
+  g_assert_cmpuint(tvt_device_get_http_port(device), ==, 80);
+  g_object_unref(device);
+}
+
+static void
 filters_device_fields(void)
 {
   TvtDevice *device = g_object_new(TVT_TYPE_DEVICE,
@@ -75,6 +117,7 @@ main(int argc, char **argv)
   g_test_add_func("/parser/tvt-response", parses_tvt_response);
   g_test_add_func("/parser/source-fallback", falls_back_to_source_ip);
   g_test_add_func("/parser/reject-unrelated", rejects_unrelated_payload);
+  g_test_add_func("/parser/layer2-response", parses_layer2_response);
   g_test_add_func("/device/filter", filters_device_fields);
   return g_test_run();
 }

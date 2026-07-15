@@ -3,6 +3,10 @@
 #include <dlfcn.h>
 #include <string.h>
 
+#ifndef TVT_DEFAULT_SDK_DIR
+#define TVT_DEFAULT_SDK_DIR "/opt/tvt-iptool/sdk"
+#endif
+
 /*
  * This is an independently defined ABI record for the SDK's legacy LAN
  * provisioning call. It intentionally contains only the network fields used
@@ -42,8 +46,13 @@ static char *
 resolve_path(const char *sdk_path)
 {
   const char *configured = sdk_path && *sdk_path ? sdk_path : g_getenv("TVT_SDK_PATH");
-  if (!configured || !*configured)
+  if (!configured || !*configured) {
+    g_autofree char *default_path =
+      g_build_filename(TVT_DEFAULT_SDK_DIR, "libdvrnetsdk.so", NULL);
+    if (g_file_test(default_path, G_FILE_TEST_IS_REGULAR))
+      return g_steal_pointer(&default_path);
     return g_strdup("libdvrnetsdk.so");
+  }
   if (g_file_test(configured, G_FILE_TEST_IS_DIR))
     return g_build_filename(configured, "libdvrnetsdk.so", NULL);
   return g_strdup(configured);
@@ -69,8 +78,8 @@ sdk_open(const char *sdk_path, GError **error)
   if (!handle) {
     const char *detail = dlerror();
     g_set_error(error, TVT_SDK_ERROR, TVT_SDK_ERROR_NOT_FOUND,
-                "Could not load %s: %s. Set TVT_SDK_PATH to your vendor-supplied Linux SDK.",
-                path, detail ? detail : "unknown loader error");
+                "Could not load %s: %s. Install the vendor SDK in %s or set TVT_SDK_PATH.",
+                path, detail ? detail : "unknown loader error", TVT_DEFAULT_SDK_DIR);
     return NULL;
   }
 
@@ -106,8 +115,17 @@ tvt_sdk_is_available(const char *sdk_path, char **detail)
       *detail = g_strdup(error->message);
     return FALSE;
   }
+  if (!sdk->init()) {
+    guint code = sdk->get_last_error ? sdk->get_last_error() : 0;
+    if (detail)
+      *detail = g_strdup_printf("Loaded %s, but SDK initialization failed (error %u)",
+                                sdk->loaded_path, code);
+    sdk_close(sdk);
+    return FALSE;
+  }
+  sdk->cleanup();
   if (detail)
-    *detail = g_strdup_printf("Loaded %s (%s)", sdk->loaded_path,
+    *detail = g_strdup_printf("Loaded and initialized %s (%s)", sdk->loaded_path,
                               sdk->set_device_ip ? "NET_SDK_SetDeviceIP" : "NET_SDK_ModifyDeviceNetInfo");
   sdk_close(sdk);
   return TRUE;

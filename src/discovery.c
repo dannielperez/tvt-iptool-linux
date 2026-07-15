@@ -1,3 +1,7 @@
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+
 #include "discovery.h"
 
 #include <arpa/inet.h>
@@ -10,6 +14,16 @@
 
 #define SSDP_ADDRESS "239.255.255.250"
 #define SSDP_PORT 1900
+#define TVT_L2_SEND_ADDRESS "234.55.55.55"
+#define TVT_L2_RECV_ADDRESS "234.55.55.56"
+#define TVT_L2_PORT 23456
+#define TVT_L2_PACKET_SIZE 140
+
+static const guint8 tvt_l2_search_request[TVT_L2_PACKET_SIZE] = {
+  0x4d, 0x48, 0x45, 0x44, /* MHED */
+  0x08, 0x00, 0x01, 0x00, /* protocol version 0x00010008 */
+  0x01, 0x00, 0x00, 0x00, /* search request */
+};
 
 static const char search_request[] =
   "M-SEARCH * HTTP/1.1\r\n"
@@ -107,9 +121,92 @@ infer_type(const char *series, const char *model)
   return "Unknown";
 }
 
+static guint16
+read_le16(const guint8 *data)
+{
+  return (guint16)data[0] | ((guint16)data[1] << 8);
+}
+
+static guint32
+read_le32(const guint8 *data)
+{
+  return (guint32)data[0] | ((guint32)data[1] << 8) |
+         ((guint32)data[2] << 16) | ((guint32)data[3] << 24);
+}
+
+static char *
+format_l2_ipv4(const guint8 *address)
+{
+  if (address[0] == 0 && address[1] == 0 && address[2] == 0 && address[3] == 0)
+    return g_strdup("");
+  return g_strdup_printf("%u.%u.%u.%u", address[0], address[1], address[2], address[3]);
+}
+
+static const char *
+l2_device_type(guint32 type)
+{
+  switch (type) {
+    case 2: return "NVR";
+    case 3: return "DVR";
+    case 4: return "IPC";
+    case 5: return "Storage";
+    case 6: return "MDVR";
+    case 8: return "Decoder";
+    case 0x10101: return "Network keyboard";
+    default: return "Unknown";
+  }
+}
+
+static char *
+read_l2_text(const guint8 *data, gsize capacity)
+{
+  gsize length = 0;
+  while (length < capacity && data[length] != 0)
+    length++;
+  char *text = g_strndup((const char *)data, length);
+  if (!g_utf8_validate(text, -1, NULL)) {
+    g_free(text);
+    return g_strdup("");
+  }
+  g_strstrip(text);
+  return text;
+}
+
+static TvtDevice *
+parse_l2_response(const guint8 *data, gsize length, GError **error)
+{
+  if (length < TVT_L2_PACKET_SIZE || memcmp(data, "MHED", 4) != 0 || read_le32(data + 8) != 2) {
+    g_set_error(error, TVT_DISCOVERY_ERROR, TVT_DISCOVERY_ERROR_PARSE,
+                "Response was not a TVT Layer-2 discovery result");
+    return NULL;
+  }
+
+  g_autofree char *ip = format_l2_ipv4(data + 0x28);
+  g_autofree char *mask = format_l2_ipv4(data + 0x2c);
+  g_autofree char *gateway = format_l2_ipv4(data + 0x30);
+  g_autofree char *name = read_l2_text(data + 0x0c, 20);
+  g_autofree char *mac = g_strdup_printf("%02X:%02X:%02X:%02X:%02X:%02X",
+                                         data[0x20], data[0x21], data[0x22],
+                                         data[0x23], data[0x24], data[0x25]);
+  guint32 type = read_le32(data + 0x40);
+  return g_object_new(TVT_TYPE_DEVICE,
+                      "ip", ip,
+                      "mac", mac,
+                      "name", *name ? name : "TVT Layer-2 device",
+                      "device-type", l2_device_type(type),
+                      "subnet-mask", mask,
+                      "gateway", gateway,
+                      "data-port", (guint)read_le16(data + 0x26),
+                      "http-port", (guint)read_le16(data + 0x3c),
+                      NULL);
+}
+
 TvtDevice *
 tvt_device_parse_response(const char *data, gsize length, const char *source_ip, GError **error)
 {
+  if (length >= 4 && memcmp(data, "MHED", 4) == 0)
+    return parse_l2_response((const guint8 *)data, length, error);
+
   const char *xml = g_strstr_len(data, length, "<multicastSearchResult");
   if (!xml) {
     g_set_error(error, TVT_DISCOVERY_ERROR, TVT_DISCOVERY_ERROR_PARSE,
@@ -200,16 +297,18 @@ tvt_discover_lan(const TvtDiscoveryOptions *options, GCancellable *cancellable, 
 
   struct sockaddr_in local = { 0 };
   local.sin_family = AF_INET;
-  local.sin_port = htons(0);
+  local.sin_port = htons(TVT_L2_PORT);
   local.sin_addr.s_addr = htonl(INADDR_ANY);
+  struct in_addr interface_address = { 0 };
+  interface_address.s_addr = htonl(INADDR_ANY);
   if (options && options->bind_address && *options->bind_address) {
-    if (inet_pton(AF_INET, options->bind_address, &local.sin_addr) != 1) {
+    if (inet_pton(AF_INET, options->bind_address, &interface_address) != 1) {
       g_set_error(error, TVT_DISCOVERY_ERROR, TVT_DISCOVERY_ERROR_BIND,
                   "Invalid bind address: %s", options->bind_address);
       close(fd);
       return NULL;
     }
-    setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &local.sin_addr, sizeof(local.sin_addr));
+    setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &interface_address, sizeof(interface_address));
   }
   if (bind(fd, (struct sockaddr *)&local, sizeof(local)) < 0) {
     g_set_error(error, TVT_DISCOVERY_ERROR, TVT_DISCOVERY_ERROR_BIND,
@@ -218,19 +317,36 @@ tvt_discover_lan(const TvtDiscoveryOptions *options, GCancellable *cancellable, 
     return NULL;
   }
 
-  unsigned char ttl = 4;
+  struct ip_mreq membership = { 0 };
+  inet_pton(AF_INET, TVT_L2_RECV_ADDRESS, &membership.imr_multiaddr);
+  membership.imr_interface = interface_address;
+  if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &membership, sizeof(membership)) < 0) {
+    g_set_error(error, TVT_DISCOVERY_ERROR, TVT_DISCOVERY_ERROR_BIND,
+                "Cannot join TVT Layer-2 discovery group: %s", g_strerror(errno));
+    close(fd);
+    return NULL;
+  }
+
+  unsigned char ttl = 5;
   setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
-  struct sockaddr_in destination = { 0 };
-  destination.sin_family = AF_INET;
-  destination.sin_port = htons(SSDP_PORT);
-  inet_pton(AF_INET, SSDP_ADDRESS, &destination.sin_addr);
+  struct sockaddr_in ssdp_destination = { 0 };
+  ssdp_destination.sin_family = AF_INET;
+  ssdp_destination.sin_port = htons(SSDP_PORT);
+  inet_pton(AF_INET, SSDP_ADDRESS, &ssdp_destination.sin_addr);
+  struct sockaddr_in l2_destination = { 0 };
+  l2_destination.sin_family = AF_INET;
+  l2_destination.sin_port = htons(TVT_L2_PORT);
+  inet_pton(AF_INET, TVT_L2_SEND_ADDRESS, &l2_destination.sin_addr);
 
   GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_object_unref);
   for (guint attempt = 0; attempt < retries; attempt++) {
     if (cancellable && g_cancellable_set_error_if_cancelled(cancellable, error))
       break;
-    if (sendto(fd, search_request, sizeof(search_request) - 1, 0,
-               (struct sockaddr *)&destination, sizeof(destination)) < 0) {
+    ssize_t l2_sent = sendto(fd, tvt_l2_search_request, sizeof(tvt_l2_search_request), 0,
+                             (struct sockaddr *)&l2_destination, sizeof(l2_destination));
+    ssize_t ssdp_sent = sendto(fd, search_request, sizeof(search_request) - 1, 0,
+                               (struct sockaddr *)&ssdp_destination, sizeof(ssdp_destination));
+    if (l2_sent < 0 && ssdp_sent < 0) {
       g_set_error(error, TVT_DISCOVERY_ERROR, TVT_DISCOVERY_ERROR_SEND,
                   "Cannot send discovery request: %s", g_strerror(errno));
       break;
