@@ -7,7 +7,7 @@ The project is intentionally buildable and useful without proprietary software:
 - LAN discovery implements the vendor Layer-2 multicast protocol and its SSDP/UPnP response format directly.
 - The GUI, parser, validation, tests, desktop files, and icons are open source.
 - No TVT SDK binary, header, credential, firmware, or copied application asset is included.
-- IP modification uses the same targeted TVT Layer-2 set-IP packet as the original IPTool and does not require the SDK.
+- IP modification uses the authenticated NVR web API when reachable and the targeted TVT Layer-2 set-IP packet as a fallback. Neither path requires the SDK.
 
 TVT and related product names are trademarks of their respective owners. This project is independent and is not an official vendor release.
 
@@ -18,11 +18,12 @@ TVT and related product names are trademarks of their respective owners. This pr
 - IP, MAC, model, name, firmware, data-port, and HTTP-port inventory
 - Double-click a device to open its HTTP or HTTPS management interface
 - Validated static IPv4, subnet-mask, and gateway editor
-- DHCP enable/disable control with Layer-2 state verification
+- DHCP enable/disable control with MAC-based state verification
+- Authenticated NVR static-IP configuration for firmware that rejects the legacy Layer-2 write packet
 - Duplicate-IP detection against the current discovery set
 - Runtime-loaded optional SDK check; the SDK is never linked into or packaged with the app
-- Direct TVT Layer-2 network provisioning targeted by device MAC
-- Post-change verification: the same MAC must reappear at the requested IP
+- Direct TVT Layer-2 network provisioning targeted by device MAC, retained for out-of-subnet devices and cameras
+- Post-change verification: the same MAC must reappear with the requested static IP or DHCP state
 - Two C frontends over the same core: GTK 3 for Ubuntu 18.04-era systems and GTK 4 for current desktops
 
 ## Build
@@ -102,7 +103,7 @@ These limits keep the initial public tool focused on the two observed, testable 
 
 ## Optional SDK setup
 
-Discovery and network modification do not need an SDK. The loader remains available for validating a private SDK installation intended for future authenticated device operations.
+Discovery and network modification do not need an SDK. The loader remains available for validating a private SDK installation intended for future device operations.
 
 Obtain the Linux device SDK through your vendor or authorized distributor. Keep it outside this repository. The default private runtime location is:
 
@@ -152,9 +153,10 @@ Changing a camera IP can interrupt recording or make the device unreachable. The
 2. validates the new IP, mask, gateway, host bits, and special-address exclusions;
 3. checks for a duplicate IP in the current discovery set;
 4. displays an exact confirmation before mutation;
-5. sends the TVT Layer-2 set-IP request targeted to one MAC;
-6. rescans for up to roughly 24 seconds and reports success only if the same MAC appears at the new IP;
-7. reports a likely rejected password when that MAC remains at its prior address.
+5. tries the NVR's nonce-bound authenticated web API when its current IP is reachable, without sending the plaintext password;
+6. falls back to the TVT Layer-2 request targeted to one MAC when the web API is unreachable or unsupported;
+7. rescans for up to roughly 90 seconds and reports success only if the same MAC appears with the requested IP or DHCP state;
+8. reports an indeterminate or rejected change when verification does not match.
 
 If verification fails, treat the operation as indeterminate. Do not update NVR channel mappings or router settings until the device is independently located.
 
@@ -166,6 +168,7 @@ GTK 3 or GTK 4 application
   ├── POSIX UDP multicast discovery
   │     └── GLib GMarkup response parser
   ├── IPv4 validation and conflict checks
+  ├── authenticated NVMS-9000 web provisioning (NVR/DVR)
   ├── TVT Layer-2 set-IP packet builder and sender
   └── optional runtime SDK loader (dlopen; diagnostics only)
         ├── NET_SDK_SetDeviceIP

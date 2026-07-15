@@ -4,6 +4,7 @@
 #include "discovery.h"
 #include "l2-provision.h"
 #include "network.h"
+#include "web-provision.h"
 #include "web-uri.h"
 
 #include <string.h>
@@ -57,6 +58,7 @@ typedef struct {
   char *subnet_mask;
   char *gateway;
   char *password;
+  guint16 http_port;
   guint32 protocol_version;
   gboolean dhcp;
   char *bind_address;
@@ -67,6 +69,7 @@ typedef struct {
   gboolean verified;
   gboolean dhcp;
   gboolean observed_dhcp;
+  gboolean used_web;
   char *observed_ip;
 } ModifyWorkResult;
 
@@ -284,17 +287,31 @@ modify_worker(GTask *task, gpointer source_object, gpointer task_data, GCancella
 {
   ModifyJob *job = task_data;
   (void)source_object;
-  g_autoptr(GError) error = NULL;
-  if (!tvt_l2_send_set_ip(job->bind_address, job->protocol_version,
-                          job->mac, job->password, job->new_ip,
-                          job->subnet_mask, job->gateway, job->dhcp, &error)) {
-    g_task_return_error(task, g_steal_pointer(&error));
-    return;
-  }
-
   ModifyWorkResult *result = g_new0(ModifyWorkResult, 1);
   result->dhcp = job->dhcp;
-  for (guint attempt = 0; attempt < 12 && (!cancellable || !g_cancellable_is_cancelled(cancellable)); attempt++) {
+  g_autoptr(GError) web_error = NULL;
+  if (tvt_web_set_network(job->old_ip, job->http_port, job->mac, job->password,
+                          job->new_ip, job->subnet_mask, job->gateway, job->dhcp,
+                          cancellable, &web_error)) {
+    result->used_web = TRUE;
+  } else {
+    g_autoptr(GError) l2_error = NULL;
+    if (!tvt_l2_send_set_ip(job->bind_address, job->protocol_version,
+                            job->mac, job->password, job->new_ip,
+                            job->subnet_mask, job->gateway, job->dhcp, &l2_error)) {
+      g_autofree char *message = g_strdup_printf(
+        "Authenticated web configuration failed: %s. Layer-2 fallback failed: %s",
+        web_error->message, l2_error->message);
+      modify_work_result_free(result);
+      g_task_return_new_error(task, TVT_WEB_PROVISION_ERROR,
+                              TVT_WEB_PROVISION_ERROR_PROTOCOL, "%s", message);
+      return;
+    }
+  }
+  if (job->password)
+    memset(job->password, 0, strlen(job->password));
+
+  for (guint attempt = 0; attempt < 40 && (!cancellable || !g_cancellable_is_cancelled(cancellable)); attempt++) {
     TvtDiscoveryOptions options = {
       .timeout_ms = MAX(1000, job->timeout_ms),
       .retries = 1,
@@ -352,14 +369,17 @@ modify_done(GObject *source_object, GAsyncResult *async_result, gpointer user_da
     } else {
       gtk_label_set_text(GTK_LABEL(app->status_label), "Change sent; device not rediscovered");
       show_notice(app, "Verification required",
-                  "The Layer-2 request was sent, but the device did not reappear during verification. "
+                  "The network request was accepted, but the device did not reappear during verification. "
                   "Refresh and locate the same MAC before changing NVR channel mappings.", TRUE);
     }
   } else {
     gtk_label_set_text(GTK_LABEL(app->status_label), "Network change verified");
-    show_notice(app, "Network change verified", result->dhcp
-                ? "The same device MAC reappeared with DHCP enabled."
-                : "The same device MAC reappeared at the requested IP address.", FALSE);
+    g_autofree char *message = result->dhcp
+      ? g_strdup_printf("The same device MAC reappeared at %s with DHCP enabled (%s).",
+                        result->observed_ip, result->used_web ? "authenticated web API" : "Layer 2")
+      : g_strdup_printf("The same device MAC reappeared at the requested IP address (%s).",
+                        result->used_web ? "authenticated web API" : "Layer 2");
+    show_notice(app, "Network change verified", message, FALSE);
   }
   modify_work_result_free(result);
   start_discovery(app);
@@ -420,6 +440,7 @@ apply_clicked(GtkButton *button, gpointer user_data)
   job->subnet_mask = g_strdup(mask);
   job->gateway = g_strdup(gateway);
   job->password = g_strdup(gtk_entry_get_text(GTK_ENTRY(app->password_entry)));
+  job->http_port = (guint16)tvt_device_get_http_port(device);
   job->protocol_version = tvt_device_get_protocol_version(device);
   job->dhcp = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(app->dhcp_check));
   set_entry(app->password_entry, "");
@@ -641,7 +662,7 @@ build_editor(App *app)
   gtk_entry_set_input_purpose(GTK_ENTRY(app->password_entry), GTK_INPUT_PURPOSE_PASSWORD);
   editor_row(GTK_GRID(grid), 4, "Admin password", app->password_entry);
   GtkWidget *hint = label_with_style(
-    "Uses TVT Layer-2 provisioning, then verifies the same MAC at the requested IP.",
+    "Uses the authenticated NVR web API when reachable, otherwise TVT Layer 2, then verifies the same MAC.",
     "dim-label");
   gtk_box_pack_start(GTK_BOX(box), hint, FALSE, FALSE, 0);
   app->apply_button = gtk_button_new_with_label("Apply and verify");

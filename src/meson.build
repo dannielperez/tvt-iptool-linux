@@ -4,6 +4,7 @@ core_sources = files(
   'l2-provision.c',
   'network.c',
   'sdk-loader.c',
+  'web-provision.c',
   'web-uri.c',
 )
 
