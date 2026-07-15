@@ -3,6 +3,7 @@ core_sources = files(
   'discovery.c',
   'network.c',
   'sdk-loader.c',
+  'web-uri.c',
 )
 
 core_deps = [glib_dep, gobject_dep, gio_dep, dl_dep]

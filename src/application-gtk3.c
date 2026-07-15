@@ -4,6 +4,7 @@
 #include "discovery.h"
 #include "network.h"
 #include "sdk-loader.h"
+#include "web-uri.h"
 
 #include <string.h>
 
@@ -155,6 +156,33 @@ selected_device(App *app)
   TvtDevice *device = NULL;
   gtk_tree_model_get(model, &iter, COL_DEVICE, &device, -1);
   return device;
+}
+
+static void
+open_device_web(App *app, TvtDevice *device)
+{
+  g_autoptr(GError) error = NULL;
+  g_autofree char *uri = tvt_device_web_uri(device, &error);
+  if (!uri || !g_app_info_launch_default_for_uri(uri, NULL, &error)) {
+    show_notice(app, "Could not open device", error ? error->message : "No web address is available.", TRUE);
+    return;
+  }
+  g_autofree char *status = g_strdup_printf("Opened %s", uri);
+  gtk_label_set_text(GTK_LABEL(app->status_label), status);
+}
+
+static void
+row_activated(GtkTreeView *tree_view, GtkTreePath *path, GtkTreeViewColumn *column,
+              gpointer user_data)
+{
+  App *app = user_data;
+  (void)column;
+  gtk_tree_view_set_cursor(tree_view, path, NULL, FALSE);
+  TvtDevice *device = selected_device(app);
+  if (!device)
+    return;
+  open_device_web(app, device);
+  g_object_unref(device);
 }
 
 static gboolean
@@ -694,6 +722,8 @@ activate(GtkApplication *application, gpointer user_data)
   app->filtered = GTK_TREE_MODEL_FILTER(gtk_tree_model_filter_new(GTK_TREE_MODEL(app->store), NULL));
   gtk_tree_model_filter_set_visible_func(app->filtered, filter_visible, app, NULL);
   app->tree_view = gtk_tree_view_new_with_model(GTK_TREE_MODEL(app->filtered));
+  gtk_widget_set_tooltip_text(app->tree_view, "Double-click a device to open its web interface");
+  g_signal_connect(app->tree_view, "row-activated", G_CALLBACK(row_activated), app);
   gtk_tree_view_set_grid_lines(GTK_TREE_VIEW(app->tree_view), GTK_TREE_VIEW_GRID_LINES_BOTH);
   add_text_column(app, "Type", COL_TYPE, 70);
   add_text_column(app, "IP address", COL_IP, 115);

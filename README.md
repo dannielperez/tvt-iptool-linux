@@ -16,6 +16,7 @@ TVT and related product names are trademarks of their respective owners. This pr
 - Immediate or periodic same-broadcast-domain discovery, including devices configured on a different IP subnet
 - Device type, port-range, and free-text filters
 - IP, MAC, model, name, firmware, data-port, and HTTP-port inventory
+- Double-click a device to open its HTTP or HTTPS management interface
 - Validated static IPv4, subnet-mask, and gateway editor
 - Duplicate-IP detection against the current discovery set
 - Runtime-loaded optional SDK; the SDK is never linked into or packaged with the app

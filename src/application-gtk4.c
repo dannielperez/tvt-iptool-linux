@@ -4,6 +4,7 @@
 #include "discovery.h"
 #include "network.h"
 #include "sdk-loader.h"
+#include "web-uri.h"
 
 #include <string.h>
 
@@ -249,6 +250,31 @@ selection_changed(GObject *object, GParamSpec *pspec, gpointer user_data)
   set_entry(app->gateway_entry, tvt_device_get_gateway(device));
   set_entry(app->password_entry, "");
   gtk_widget_set_sensitive(app->apply_button, *tvt_device_get_mac(device) != '\0');
+}
+
+static void
+open_device_web(App *app, TvtDevice *device)
+{
+  g_autoptr(GError) error = NULL;
+  g_autofree char *uri = tvt_device_web_uri(device, &error);
+  if (!uri || !g_app_info_launch_default_for_uri(uri, NULL, &error)) {
+    show_notice(app, "Could not open device", error ? error->message : "No web address is available.", TRUE);
+    return;
+  }
+  g_autofree char *status = g_strdup_printf("Opened %s", uri);
+  gtk_label_set_text(GTK_LABEL(app->status_label), status);
+}
+
+static void
+row_activated(GtkColumnView *column_view, guint position, gpointer user_data)
+{
+  App *app = user_data;
+  (void)column_view;
+  TvtDevice *device = g_list_model_get_item(G_LIST_MODEL(app->filtered), position);
+  if (!device)
+    return;
+  open_device_web(app, device);
+  g_object_unref(device);
 }
 
 static gboolean
@@ -709,6 +735,8 @@ activate(GtkApplication *application, gpointer user_data)
   gtk_single_selection_set_autoselect(app->selection, FALSE);
   g_signal_connect(app->selection, "notify::selected-item", G_CALLBACK(selection_changed), app);
   app->column_view = gtk_column_view_new(GTK_SELECTION_MODEL(app->selection));
+  gtk_widget_set_tooltip_text(app->column_view, "Double-click a device to open its web interface");
+  g_signal_connect(app->column_view, "activate", G_CALLBACK(row_activated), app);
   gtk_column_view_set_show_column_separators(GTK_COLUMN_VIEW(app->column_view), TRUE);
   gtk_column_view_set_show_row_separators(GTK_COLUMN_VIEW(app->column_view), TRUE);
   add_column(app, "Type", 0, 80);
