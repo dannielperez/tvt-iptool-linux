@@ -41,6 +41,12 @@ typedef struct {
 
 G_DEFINE_QUARK(tvt-web-provision-error-quark, tvt_web_provision_error)
 
+gboolean
+tvt_web_ipv6_is_stale(const char *address)
+{
+  return !address || !*address || strchr(address, '.') != NULL;
+}
+
 static void
 secure_clear(char *value)
 {
@@ -340,6 +346,13 @@ build_edit_content(NetworkConfig *config, const char *mac,
   guint mask_index = field_index("mask");
   guint dns_dhcp_index = field_index("ipv4DnsDhcpSwitch");
   guint dns1_index = field_index("dns1");
+  guint ipv6_switch_index = field_index("ipV6Switch");
+  guint ipv6_index = field_index("ipV6");
+  guint gateway_ipv6_index = field_index("gatewayV6");
+  guint prefix_ipv6_index = field_index("subLengthV6");
+  guint dns_dhcp_ipv6_index = field_index("ipv6DnsDhcpSwitch");
+  guint dns1_ipv6_index = field_index("ipv6Dns1");
+  guint dns2_ipv6_index = field_index("ipv6Dns2");
   guint second_switch_index = field_index("secondIpSwitch");
   g_autoptr(GString) content = g_string_new("<content><nicConfigs>");
   gboolean has_poe = FALSE;
@@ -353,6 +366,9 @@ build_edit_content(NetworkConfig *config, const char *mac,
         continue;
       const char *value = nic->values[field];
       if (nic == target) {
+        gboolean clear_stale_ipv6 = !dhcp &&
+          g_str_equal(nic->values[ipv6_switch_index], "true") &&
+          tvt_web_ipv6_is_stale(nic->values[ipv6_index]);
         if (field == dhcp_index)
           value = dhcp ? "true" : "false";
         else if (!dhcp && field == ip_index)
@@ -368,6 +384,15 @@ build_edit_content(NetworkConfig *config, const char *mac,
                   g_str_equal(nic->values[dns1_index], nic->values[gateway_index])))
           value = gateway;
         else if (dhcp && field == second_switch_index)
+          value = "false";
+        else if (clear_stale_ipv6 && field == ipv6_switch_index)
+          value = "false";
+        else if (clear_stale_ipv6 &&
+                 (field == ipv6_index || field == gateway_ipv6_index ||
+                  field == prefix_ipv6_index || field == dns1_ipv6_index ||
+                  field == dns2_ipv6_index))
+          value = "";
+        else if (clear_stale_ipv6 && field == dns_dhcp_ipv6_index)
           value = "false";
       }
       append_element(content, nic_fields[field], value);

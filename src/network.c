@@ -81,3 +81,41 @@ tvt_network_validate(const char *ip, const char *subnet_mask, const char *gatewa
   }
   return TRUE;
 }
+
+gboolean
+tvt_network_increment_ipv4(const char *start_ip, guint offset,
+                           char **result, GError **error)
+{
+  struct in_addr address = {0};
+  if (result)
+    *result = NULL;
+  if (!parse_ipv4(start_ip, &address)) {
+    g_set_error(error, TVT_NETWORK_ERROR, TVT_NETWORK_ERROR_INVALID_IP,
+                "Enter a valid starting IPv4 address for the bulk plan.");
+    return FALSE;
+  }
+
+  guint32 host_order = ntohl(address.s_addr);
+  if (offset > UINT32_MAX - host_order) {
+    g_set_error(error, TVT_NETWORK_ERROR, TVT_NETWORK_ERROR_INVALID_IP,
+                "The sequential IPv4 range extends past 255.255.255.255.");
+    return FALSE;
+  }
+  host_order += offset;
+  if (!is_usable_unicast(host_order)) {
+    g_set_error(error, TVT_NETWORK_ERROR, TVT_NETWORK_ERROR_INVALID_IP,
+                "The sequential IPv4 range contains an unusable address.");
+    return FALSE;
+  }
+
+  address.s_addr = htonl(host_order);
+  char buffer[INET_ADDRSTRLEN];
+  if (!inet_ntop(AF_INET, &address, buffer, sizeof(buffer))) {
+    g_set_error(error, TVT_NETWORK_ERROR, TVT_NETWORK_ERROR_INVALID_IP,
+                "Could not format the generated IPv4 address.");
+    return FALSE;
+  }
+  if (result)
+    *result = g_strdup(buffer);
+  return TRUE;
+}

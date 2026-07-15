@@ -19,4 +19,7 @@ GQuark tvt_network_error_quark(void);
 gboolean tvt_network_validate(const char *ip, const char *subnet_mask, const char *gateway,
                               char **warning, GError **error);
 
+gboolean tvt_network_increment_ipv4(const char *start_ip, guint offset,
+                                    char **result, GError **error);
+
 G_END_DECLS

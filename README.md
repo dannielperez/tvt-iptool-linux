@@ -16,12 +16,16 @@ TVT and related product names are trademarks of their respective owners. This pr
 - Immediate or periodic same-broadcast-domain discovery, including devices configured on a different IP subnet
 - Device type, port-range, and free-text filters
 - IP, MAC, model, name, firmware, data-port, and HTTP-port inventory
+- Select-all and multi-device selection with explicit MAC-to-IP confirmation plans
+- Verified bulk DHCP changes and sequential static-IP assignment
 - Double-click a device to open its HTTP or HTTPS management interface
 - Validated static IPv4, subnet-mask, and gateway editor
 - DHCP enable/disable control with MAC-based state verification
 - Authenticated NVR static-IP configuration for firmware that rejects the legacy Layer-2 write packet
 - Duplicate-IP detection against the current discovery set
 - Runtime-loaded optional SDK check; the SDK is never linked into or packaged with the app
+- Persistent in-app configuration for the private SDK path, discovery interface, and timeout
+- About page with version, license, project ownership, and source link
 - Direct TVT Layer-2 network provisioning targeted by device MAC, retained for out-of-subnet devices and cameras
 - Post-change verification: the same MAC must reappear with the requested static IP or DHCP state
 - Two C frontends over the same core: GTK 3 for Ubuntu 18.04-era systems and GTK 4 for current desktops
@@ -95,11 +99,13 @@ Layer-2 discovery stays on the local broadcast domain. Routed/VPN subnet sweeps 
 ## Deliberate first-release limits
 
 - No factory reset or password-reset action. Those are destructive and vary by firmware.
-- No activation, firmware upgrade, or bulk network mutation.
+- No activation or firmware upgrade.
 - No routed-subnet sweep; discovery is local multicast only.
 - IPv4 provisioning only. IPv6 values may be displayed in a future release once verified against current devices.
 
-These limits keep the initial public tool focused on the two observed, testable workflows: discovery and one-device-at-a-time network configuration.
+These limits keep the tool focused on observed, testable discovery and network-configuration workflows.
+
+Bulk changes remain deliberately narrow: DHCP is applied to the selected devices, while static mode assigns sequential addresses beginning with the entered IP. The confirmation page lists every MAC-to-IP mapping before transmission, and each device is verified independently.
 
 ## Optional SDK setup
 
@@ -131,6 +137,8 @@ tvt-iptool --sdk-path /opt/tvt-sdk
 ```
 
 The path may name the library or a directory containing `libdvrnetsdk.so`. The SDK's companion libraries must also be visible to the dynamic loader, commonly through its own runtime layout or `LD_LIBRARY_PATH`.
+
+The Configuration button saves the SDK path, discovery bind address, and timeout to `~/.config/tvt-iptool/config.ini`. Command-line options override those saved values for the current launch. Device passwords are never stored there.
 
 Validate the SDK loader and required symbols without opening the GUI:
 
@@ -164,10 +172,10 @@ If verification fails, treat the operation as indeterminate. Do not update NVR c
 
 ```text
 GTK 3 or GTK 4 application
-  ├── GListStore device inventory + filters
+  ├── GListStore device inventory + filters + multi-selection
   ├── POSIX UDP multicast discovery
   │     └── GLib GMarkup response parser
-  ├── IPv4 validation and conflict checks
+  ├── IPv4 validation, sequential bulk planning, and conflict checks
   ├── authenticated NVMS-9000 web provisioning (NVR/DVR)
   ├── TVT Layer-2 set-IP packet builder and sender
   └── optional runtime SDK loader (dlopen; diagnostics only)
