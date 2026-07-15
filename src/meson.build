@@ -1,4 +1,5 @@
 core_sources = files(
+  'config.c',
   'device.c',
   'discovery.c',
   'l2-provision.c',
@@ -24,7 +25,10 @@ tvt_core_dep = declare_dependency(
 )
 
 application_source = gui_variant == 'gtk3' ? 'application-gtk3.c' : 'application-gtk4.c'
-application_c_args = ['-DTVT_GUI_VARIANT="@0@"'.format(gui_variant)]
+application_c_args = [
+  '-DTVT_GUI_VARIANT="@0@"'.format(gui_variant),
+  '-DTVT_VERSION="@0@"'.format(meson.project_version()),
+]
 if gui_variant == 'gtk4'
   # GTK 4.14 contains a harmless extra semicolon in a public header that
   # -Wpedantic diagnoses. Keep strict warnings enabled for the shared core.

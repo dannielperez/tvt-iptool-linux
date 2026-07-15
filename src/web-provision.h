@@ -17,6 +17,8 @@ typedef enum {
 
 GQuark tvt_web_provision_error_quark(void);
 
+gboolean tvt_web_ipv6_is_stale(const char *address);
+
 gboolean tvt_web_set_network(const char *host,
                              guint16 http_port,
                              const char *mac,

@@ -3,6 +3,7 @@
 #include "l2-provision.h"
 #include "network.h"
 #include "web-uri.h"
+#include "web-provision.h"
 
 static void
 valid_plan(void)
@@ -54,6 +55,34 @@ rejects_special_addresses(void)
   g_autoptr(GError) link_local = NULL;
   g_assert_false(tvt_network_validate("169.254.1.2", "255.255.0.0", "169.254.1.1", NULL, &link_local));
   g_assert_error(link_local, TVT_NETWORK_ERROR, TVT_NETWORK_ERROR_INVALID_IP);
+}
+
+static void
+builds_sequential_ipv4_plan(void)
+{
+  g_autoptr(GError) error = NULL;
+  g_autofree char *first = NULL;
+  g_autofree char *cross_octet = NULL;
+  g_assert_true(tvt_network_increment_ipv4("10.20.30.250", 0, &first, &error));
+  g_assert_no_error(error);
+  g_assert_cmpstr(first, ==, "10.20.30.250");
+  g_assert_true(tvt_network_increment_ipv4("10.20.30.250", 8, &cross_octet, &error));
+  g_assert_no_error(error);
+  g_assert_cmpstr(cross_octet, ==, "10.20.31.2");
+
+  g_autoptr(GError) overflow = NULL;
+  g_autofree char *invalid = NULL;
+  g_assert_false(tvt_network_increment_ipv4("255.255.255.250", 10, &invalid, &overflow));
+  g_assert_error(overflow, TVT_NETWORK_ERROR, TVT_NETWORK_ERROR_INVALID_IP);
+}
+
+static void
+detects_only_stale_ipv4_derived_ipv6(void)
+{
+  g_assert_true(tvt_web_ipv6_is_stale(""));
+  g_assert_true(tvt_web_ipv6_is_stale("::ffff:10.200.60.250"));
+  g_assert_false(tvt_web_ipv6_is_stale("2001:db8::250"));
+  g_assert_false(tvt_web_ipv6_is_stale("fe80::5a5b:69ff:fe52:2871"));
 }
 
 static void
@@ -136,6 +165,8 @@ main(int argc, char **argv)
   g_test_add_func("/network/network-broadcast", rejects_network_and_broadcast);
   g_test_add_func("/network/off-subnet-warning", warns_for_off_subnet_gateway);
   g_test_add_func("/network/special-addresses", rejects_special_addresses);
+  g_test_add_func("/network/sequential-plan", builds_sequential_ipv4_plan);
+  g_test_add_func("/network/stale-ipv6", detects_only_stale_ipv4_derived_ipv6);
   g_test_add_func("/network/web-uri", builds_device_web_uris);
   g_test_add_func("/network/l2-set-ip-packet", builds_vendor_compatible_set_ip_packet);
   g_test_add_func("/network/l2-set-ip-arguments", validates_set_ip_packet_arguments);

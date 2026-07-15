@@ -12,6 +12,13 @@ network_test = executable(
 )
 test('network-validation', network_test)
 
+config_test = executable(
+  'test-config',
+  'test-config.c',
+  dependencies: [tvt_core_dep],
+)
+test('configuration', config_test)
+
 fake_sdk = shared_module(
   'fake-dvrnetsdk',
   'fake-sdk.c',

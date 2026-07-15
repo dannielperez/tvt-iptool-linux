@@ -16,6 +16,11 @@
   </developer>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.2.0" date="2026-07-15">
+      <description>
+        <p>Add multi-device selection, verified bulk DHCP and sequential static-IP changes, in-app configuration, About information, and safer IPv4/IPv6 transitions.</p>
+      </description>
+    </release>
     <release version="0.1.5" date="2026-07-15">
       <description>
         <p>Add authenticated NVR web provisioning, Layer-2 fallback, and longer MAC-based verification.</p>
