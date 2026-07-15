@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=TVT IPTool
+Comment=Discover and configure TVT cameras on the local network
+Exec=tvt-iptool
+Icon=io.github.dannielperez.tvt-iptool
+Terminal=false
+Type=Application
+Categories=Network;
+Keywords=TVT;camera;NVR;DVR;IPC;network;scanner;
+StartupNotify=true

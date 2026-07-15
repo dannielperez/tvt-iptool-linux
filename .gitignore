@@ -1,0 +1,19 @@
+/build/
+/.cache/
+/.idea/
+/.vscode/
+/.env
+*.swp
+*~
+
+# Never commit vendor SDK material.
+/vendor/
+/sdk/
+/third_party/tvt*/
+libdvrnetsdk.so*
+libNetClientSDK.so*
+DVR_NET_SDK.h
+*.dll
+*.dylib
+*.so
+*.so.*

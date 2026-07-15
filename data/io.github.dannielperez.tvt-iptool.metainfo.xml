@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.dannielperez.tvt-iptool</id>
+  <name>TVT IPTool</name>
+  <summary>Discover and configure TVT cameras on Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>TVT IPTool is a clean-room Linux utility for discovering TVT-family cameras, NVRs, and DVRs on a local network.</p>
+    <p>Discovery works without proprietary software. Network changes require a separately obtained vendor SDK loaded at runtime.</p>
+  </description>
+  <launchable type="desktop-id">io.github.dannielperez.tvt-iptool.desktop</launchable>
+  <url type="homepage">https://github.com/dannielperez/tvt-iptool-linux</url>
+  <developer id="io.github.dannielperez">
+    <name>Danniel Perez</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-07-14" />
+  </releases>
+</component>
